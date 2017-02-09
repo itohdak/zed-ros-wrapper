@@ -50,6 +50,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <geometry_msgs/TransformStamped.h>
+#include <std_srvs/Trigger.h>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -90,6 +91,7 @@ namespace zed_wrapper {
         ros::Publisher pub_right_cam_info;
         ros::Publisher pub_depth_cam_info;
         ros::Publisher pub_odom;
+        ros::ServiceServer init_srv;
 
         // tf
         tf2_ros::TransformBroadcaster transform_odom_broadcaster;
@@ -216,6 +218,30 @@ namespace zed_wrapper {
             transformStamped.transform.rotation.y = -quat.x();
             transformStamped.transform.rotation.z = quat.y();
             transformStamped.transform.rotation.w = quat.w();
+            trans_br.sendTransform(transformStamped);
+        }
+
+        /* \brief Publish the pose of the camera as a transformation from current position to initial position
+         * \param Path : the 4x4 matrix representing the camera pose
+         * \param trans_br : the TransformBroadcaster object to use
+         * \param odometry_transform_frame_id : the id of the transformation
+         * \param t : the ros::Time to stamp the image
+         */
+        void publishTrackedInverseFrame(Eigen::Matrix4f Path, tf2_ros::TransformBroadcaster &trans_br, string odometry_transform_frame_id, ros::Time t) {
+
+            geometry_msgs::TransformStamped transformStamped;
+            transformStamped.header.stamp = ros::Time::now();
+            transformStamped.header.frame_id = odometry_transform_frame_id;
+            transformStamped.child_frame_id = "zed_initial_frame";
+            transformStamped.transform.translation.x = Path(2, 3);
+            transformStamped.transform.translation.y = Path(0, 3);
+            transformStamped.transform.translation.z = - Path(1, 3);
+            Eigen::Quaternionf quat(Path.block<3, 3>(0, 0));
+            Eigen::Quaternionf q_inv = quat.inverse();
+            transformStamped.transform.rotation.x = -q_inv.z();
+            transformStamped.transform.rotation.y = -q_inv.x();
+            transformStamped.transform.rotation.z = q_inv.y();
+            transformStamped.transform.rotation.w = q_inv.w();
             trans_br.sendTransform(transformStamped);
         }
 
@@ -386,6 +412,16 @@ namespace zed_wrapper {
             confidence = config.confidence;
         }
 
+
+        bool init_odom(std_srvs::Trigger::Request &req,
+                       std_srvs::Trigger::Response &res) {
+          Path.setIdentity(4, 4);
+          zed->enableTracking(Path, true, odometry_DB);
+          NODELET_INFO_STREAM("Odometry Initialized.");
+          res.success = true;
+          return true;
+        }
+
         void device_poll() {
             ros::Rate loop_rate(rate);
             ros::Time old_t = ros::Time::now();
@@ -552,12 +588,14 @@ namespace zed_wrapper {
                     }
 
                     //Note, the frame is published, but its values will only change if someone has subscribed to odom
-                    publishTrackedFrame(Path, transform_odom_broadcaster, odometry_transform_frame_id, t); //publish the tracked Frame
+                    //publishTrackedFrame(Path, transform_odom_broadcaster, odometry_transform_frame_id, t); //publish the tracked Frame
+                    publishTrackedInverseFrame(Path, transform_odom_broadcaster, odometry_transform_frame_id, t); //publish the tracked Frame
 
                     loop_rate.sleep();
                 } else {
 
-                    publishTrackedFrame(Path, transform_odom_broadcaster, odometry_transform_frame_id, ros::Time::now()); //publish the tracked Frame before the sleep
+                    //publishTrackedFrame(Path, transform_odom_broadcaster, odometry_transform_frame_id, ros::Time::now()); //publish the tracked Frame before the sleep
+                    publishTrackedInverseFrame(Path, transform_odom_broadcaster, odometry_transform_frame_id, ros::Time::now()); //publish the tracked Frame before the sleep
                     std::this_thread::sleep_for(std::chrono::milliseconds(10)); // No subscribers, we just wait
                 }
             } // while loop
@@ -607,6 +645,8 @@ namespace zed_wrapper {
             string odometry_topic = "odom";
             odometry_frame_id = "/zed_initial_frame";
             odometry_transform_frame_id = "/zed_current_frame";
+
+            string odometry_service = "initialize_odom";
 
             nh = getMTNodeHandle();
             nh_ns = getMTPrivateNodeHandle();
@@ -717,6 +757,10 @@ namespace zed_wrapper {
             //Odometry publisher
             pub_odom = nh.advertise<nav_msgs::Odometry>(odometry_topic, 1);
             NODELET_INFO_STREAM("Advertized on topic " << odometry_topic);
+
+            //Odometry initialize serviceserver
+            init_srv = nh.advertiseService(odometry_service, &ZEDWrapperNodelet::init_odom, this);
+            NODELET_INFO_STREAM("Advertized on service " << odometry_service);
 
             device_poll_thread = boost::shared_ptr<boost::thread>
                     (new boost::thread(boost::bind(&ZEDWrapperNodelet::device_poll, this)));
