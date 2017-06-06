@@ -119,6 +119,7 @@ namespace zed_wrapper {
         bool computeDepth;
         bool grabbing = false;
         int openniDepthMode = 0; // 16 bit UC data in mm else 32F in m, for more info http://www.ros.org/reps/rep-0118.html
+        bool odom_init = false;
 
         // Point cloud variables
         sl::Mat cloud;
@@ -274,7 +275,7 @@ namespace zed_wrapper {
             transformStamped.transform.translation.y = translation(0);
             transformStamped.transform.translation.z = translation(1);
             transformStamped.transform.rotation.x = -quat(2);
-            transformStamped.transform.rotation.y = -quat(0);
+            transformStamped.transform.rotation.y = quat(0);
             transformStamped.transform.rotation.z = quat(1);
             transformStamped.transform.rotation.w = quat(3);
             trans_br.sendTransform(transformStamped);
@@ -427,12 +428,7 @@ namespace zed_wrapper {
 
         bool init_odom(std_srvs::Trigger::Request &req,
                        std_srvs::Trigger::Response &res) {
-            sl::Transform init_pose;
-            zed->resetTracking(init_pose);
-            sl::TrackingParameters trackParams;
-            trackParams.area_file_path = odometry_DB.c_str();
-            zed->enableTracking(trackParams);
-            NODELET_INFO_STREAM("Odometry Initialized.");
+            odom_init = true;
             res.success = true;
             return true;
         }
@@ -489,6 +485,17 @@ namespace zed_wrapper {
                     runParams.enable_point_cloud = true;
                 // Run the loop only if there is some subscribers
                 if (runLoop) {
+                    if (odom_init){ // Initialize the tracking
+                        zed->disableTracking();
+                        sl::Transform init_pose;
+                        zed->resetTracking(init_pose);
+                        sl::TrackingParameters trackParams;
+                        trackParams.area_file_path = odometry_DB.c_str();
+                        zed->enableTracking(trackParams);
+                        odom_init = false;
+                        NODELET_INFO_STREAM("Odometry Initialized.");
+                    }
+
                     if (odom_SubNumber > 0 && !tracking_activated) { //Start the tracking
                         if (odometry_DB != "" && !file_exist(odometry_DB)) {
                             odometry_DB = "";
