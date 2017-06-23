@@ -340,6 +340,37 @@ namespace zed_wrapper {
             pub_cloud.publish(output);
         }
 
+        /* \brief Publish a pointCloud with a ros Publisher in depth frame, same coordinates as original cloud
+         * \param width : the width of the point cloud
+         * \param height : the height of the point cloud
+         * \param pub_cloud : the publisher object to use
+         */
+        void publishPointCloudOriginalCoordinates(int width, int height, ros::Publisher &pub_cloud) {
+            pcl::PointCloud<pcl::PointXYZRGB> point_cloud;
+            point_cloud.width = width;
+            point_cloud.height = height;
+            int size = width*height;
+            point_cloud.points.resize(size);
+
+            sl::Vector4<float>* cpu_cloud = cloud.getPtr<sl::float4>();
+            for (int i = 0; i < size; i++) {
+                point_cloud.points[i].x = cpu_cloud[i][0];
+                point_cloud.points[i].y = cpu_cloud[i][1];
+                point_cloud.points[i].z = cpu_cloud[i][2];
+                point_cloud.points[i].rgb = cpu_cloud[i][3];
+            }
+
+            sensor_msgs::PointCloud2 output;
+            pcl::toROSMsg(point_cloud, output); // Convert the point cloud to a ROS message
+            output.header.frame_id = depth_frame_id; // Set the header values of the ROS message
+            output.header.stamp = point_cloud_time;
+            output.height = height;
+            output.width = width;
+            output.is_bigendian = false;
+            output.is_dense = false;
+            pub_cloud.publish(output);
+        }
+
         /* \brief Publish the informations of a camera with a ros Publisher
          * \param cam_info_msg : the information message to publish
          * \param pub_cam_info : the publisher object to use
@@ -613,7 +644,8 @@ namespace zed_wrapper {
                         zed->retrieveMeasure(cloud, sl::MEASURE_XYZBGRA);
                         point_cloud_frame_id = cloud_frame_id;
                         point_cloud_time = t;
-                        publishPointCloud(width, height, pub_cloud);
+                        // publishPointCloud(width, height, pub_cloud);
+                        publishPointCloudOriginalCoordinates(width, height, pub_cloud);
                     }
 
                     // Publish the odometry if someone has subscribed to
