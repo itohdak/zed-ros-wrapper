@@ -266,14 +266,19 @@ namespace zed_wrapper {
             transformStamped.child_frame_id = "zed_initial_frame";
             sl::Translation translation = pose.getTranslation();
             sl::Orientation quat = pose.getOrientation();
-            transformStamped.transform.rotation.x = quat(2);
-            transformStamped.transform.rotation.y = -quat(0);
-            transformStamped.transform.rotation.z = -quat(1);
-            transformStamped.transform.rotation.w = quat(3);
 
-            transformStamped.transform.translation.x = -translation(2);
-            transformStamped.transform.translation.y = translation(0);
-            transformStamped.transform.translation.z = translation(1);
+            // calc translation in local coordinates
+            sl::Orientation inv_quat;
+            inv_quat.x = -quat(0);
+            inv_quat.y = -quat(1);
+            inv_quat.z = -quat(2);
+            inv_quat.w = quat(3);
+            sl::Translation inv_translation = translation * inv_quat;
+
+            // convert image coordinates to ROS coordinates
+            transformStamped.transform.translation.x = -inv_translation(2);
+            transformStamped.transform.translation.y = inv_translation(0);
+            transformStamped.transform.translation.z = inv_translation(1);
             transformStamped.transform.rotation.x = -quat(2);
             transformStamped.transform.rotation.y = quat(0);
             transformStamped.transform.rotation.z = quat(1);
