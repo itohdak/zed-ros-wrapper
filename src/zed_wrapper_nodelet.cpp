@@ -211,7 +211,7 @@ namespace zed_wrapper {
          * \param odom_frame_id : the id of the reference frame of the pose
          * \param t : the ros::Time to stamp the image
          */
-        void publishOdom(sl::Pose pose, ros::Publisher &pub_odom, string odom_frame_id, ros::Time t) {
+      void publishOdom(sl::Pose pose, ros::Publisher &pub_odom, string odom_frame_id, ros::Time t, sl::Translation twist_linear) {
             nav_msgs::Odometry odom;
             odom.header.stamp = t;
             odom.header.frame_id = odom_frame_id;
@@ -225,8 +225,80 @@ namespace zed_wrapper {
             odom.pose.pose.orientation.y = -quat(0);
             odom.pose.pose.orientation.z = -quat(1);
             odom.pose.pose.orientation.w = quat(3);
+            odom.twist.twist.linear.x = twist_linear(0);
+            odom.twist.twist.linear.y = twist_linear(1);
+            odom.twist.twist.linear.z = twist_linear(2);
+
+            // sl::Translation pre_translation = pre_pose.getTranslation();
+            // double pre_position_x = pre_translation(2);
+            // double pre_position_y = -pre_translation(0);
+            // double pre_position_z = -pre_translation(1);
+            // if ((fabs(odom.pose.pose.position.x - pre_position_x) < 0.01) && (fabs(odom.pose.pose.position.y - pre_position_y) < 0.01) && (fabs(odom.pose.pose.position.z - pre_position_z) < 0.01)) {
+            //   odom.twist.twist.linear.x = (odom.pose.pose.position.x - pre_position_x) / (t - pre_t).toSec();
+            //   odom.twist.twist.linear.y = (odom.pose.pose.position.y - pre_position_y) / (t - pre_t).toSec();
+            //   odom.twist.twist.linear.z = (odom.pose.pose.position.z - pre_position_z) / (t - pre_t).toSec();
+            // } else {
+            //   NODELET_INFO_STREAM("odom.twist.twist.linear.x: " << odom.twist.twist.linear.x);
+            //   NODELET_INFO_STREAM("odom.twist.twist.linear.y: " << odom.twist.twist.linear.y);
+            //   NODELET_INFO_STREAM("odom.twist.twist.linear.z: " << odom.twist.twist.linear.z);
+            // }
+
+            // if (fabs(odom.twist.twist.linear.x) > 8.0)
+            //   NODELET_INFO_STREAM("Ijoukensyutsu");
+            // NODELET_INFO_STREAM("odom.twist.twist.linear.x: " << odom.twist.twist.linear.x);
+            // NODELET_INFO_STREAM("odom.pose.pose.position.x: " << odom.pose.pose.position.x);
+            // NODELET_INFO_STREAM("pre_position_x: " << pre_position_x);
+            // NODELET_INFO_STREAM("(t - pre_t).toSec(): " << (t - pre_t).toSec());
+            // NODELET_INFO_STREAM("#######################################");
+
             pub_odom.publish(odom);
         }
+
+      sl::Translation rawLinearVelocity(sl::Pose pose, sl::Pose pre_pose, ros::Time t, ros::Time pre_t) {
+        sl::Translation linvel;
+        sl::Translation translation = pose.getTranslation();
+        double position_x = translation(2);
+        double position_y = -translation(0);
+        double position_z = -translation(1);
+        sl::Translation pre_translation = pre_pose.getTranslation();
+        double pre_position_x = pre_translation(2);
+        double pre_position_y = -pre_translation(0);
+        double pre_position_z = -pre_translation(1);
+        linvel(0) = (position_x - pre_position_x) / (t - pre_t).toSec();
+        linvel(1) = (position_y - pre_position_y) / (t - pre_t).toSec();
+        linvel(2) = (position_z - pre_position_z) / (t - pre_t).toSec();
+        return linvel;
+      }
+
+      sl::Translation filteredLinearVelocity(sl::Translation raw_vel, sl::Translation pre_vel) {
+        sl::Translation filtered_linvel;
+        // LPF
+        filtered_linvel(0) = 0.95 * pre_vel(0) + 0.05 * raw_vel(0);
+        filtered_linvel(1) = 0.95 * pre_vel(1) + 0.05 * raw_vel(1);
+        filtered_linvel(2) = 0.95 * pre_vel(2) + 0.05 * raw_vel(2);
+        // Original Filter to Remove Impulse
+        if ((fabs(filtered_linvel(0) - pre_vel(0)) > 0.3) || (fabs(filtered_linvel(1) - pre_vel(1)) > 0.3) || (fabs(filtered_linvel(2) - pre_vel(2)) > 0.3))
+          filtered_linvel = pre_vel;
+        return filtered_linvel;
+      }
+
+      sl::Translation localizedLinearVelocity(sl::Pose pose, sl::Translation world_vel) {
+        sl::Translation local_linvel;
+        sl::Translation translation = pose.getTranslation();
+        double position_x = translation(2);
+        double position_y = -translation(0);
+        double position_z = -translation(1);
+        sl::Orientation quat = pose.getOrientation();
+        double orientation_x = quat(2);
+        double orientation_y = -quat(0);
+        double orientation_z = -quat(1);
+        double orientation_w = quat(3);
+        // ToDo
+        // local_linvel(0) = world_vel(0);
+        // local_linvel(1) = world_vel(1);
+        // local_linvel(2) = world_vel(2);
+        return local_linvel;
+      }
 
         /* \brief Publish the pose of the camera as a transformation
          * \param pose : the 4x4 matrix representing the camera pose
@@ -474,6 +546,11 @@ namespace zed_wrapper {
             ros::Time old_t = ros::Time::now();
             bool old_image = false;
             bool tracking_activated = false;
+            sl::Pose old_odom_pose;
+            zed->getPosition(old_odom_pose);
+            sl::Translation raw_twist_linvel, twist_linvel, local_twist_linvel;
+            sl::Translation old_twist_linvel = {0.0, 0.0, 0.0};
+            ros::Time old_odom_t = ros::Time::now();
 
             // Get the parameters of the ZED images
             int width = zed->getResolution().width;
@@ -656,8 +733,16 @@ namespace zed_wrapper {
                     // Publish the odometry if someone has subscribed to
                     if (odom_SubNumber > 0) {
                         zed->getPosition(pose);
-                        publishOdom(pose, pub_odom, odometry_frame_id, t);
+                        raw_twist_linvel = rawLinearVelocity(pose, old_odom_pose, t, old_odom_t);
+                        twist_linvel = filteredLinearVelocity(raw_twist_linvel, old_twist_linvel);
+                        local_twist_linvel = localizedLinearVelocity(pose, twist_linvel);
+                        // publishOdom(pose, pub_odom, odometry_frame_id, t, twist_linvel);
+                        publishOdom(pose, pub_odom, odometry_frame_id, t, local_twist_linvel);
+                        old_odom_pose = pose;
+                        old_twist_linvel = twist_linvel;
                     }
+
+                    old_odom_t = ros::Time::now();
 
                     //Note, the frame is published, but its values will only change if someone has subscribed to odom
                     //publishTrackedFrame(pose, transform_odom_broadcaster, odometry_transform_frame_id, t); //publish the tracked Frame
