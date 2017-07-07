@@ -243,14 +243,6 @@ namespace zed_wrapper {
             //   NODELET_INFO_STREAM("odom.twist.twist.linear.z: " << odom.twist.twist.linear.z);
             // }
 
-            // if (fabs(odom.twist.twist.linear.x) > 8.0)
-            //   NODELET_INFO_STREAM("Ijoukensyutsu");
-            // NODELET_INFO_STREAM("odom.twist.twist.linear.x: " << odom.twist.twist.linear.x);
-            // NODELET_INFO_STREAM("odom.pose.pose.position.x: " << odom.pose.pose.position.x);
-            // NODELET_INFO_STREAM("pre_position_x: " << pre_position_x);
-            // NODELET_INFO_STREAM("(t - pre_t).toSec(): " << (t - pre_t).toSec());
-            // NODELET_INFO_STREAM("#######################################");
-
             pub_odom.publish(odom);
         }
 
@@ -267,6 +259,16 @@ namespace zed_wrapper {
         linvel(0) = (position_x - pre_position_x) / (t - pre_t).toSec();
         linvel(1) = (position_y - pre_position_y) / (t - pre_t).toSec();
         linvel(2) = (position_z - pre_position_z) / (t - pre_t).toSec();
+
+        if (fabs(linvel(0)) > 8.0) {
+          NODELET_INFO_STREAM("Ijoukensyutsu");
+          NODELET_INFO_STREAM("linvel(0): " << linvel(0));
+          NODELET_INFO_STREAM("position_x: " << position_x);
+          NODELET_INFO_STREAM("pre_position_x: " << pre_position_x);
+          NODELET_INFO_STREAM("(t - pre_t).toSec(): " << (t - pre_t).toSec());
+          NODELET_INFO_STREAM("#######################################");
+        }
+
         return linvel;
       }
 
@@ -283,21 +285,20 @@ namespace zed_wrapper {
       }
 
       sl::Translation localizedLinearVelocity(sl::Pose pose, sl::Translation world_vel) {
-        sl::Translation local_linvel;
-        sl::Translation translation = pose.getTranslation();
-        double position_x = translation(2);
-        double position_y = -translation(0);
-        double position_z = -translation(1);
+        sl::Translation local_vel;
         sl::Orientation quat = pose.getOrientation();
         double orientation_x = quat(2);
         double orientation_y = -quat(0);
         double orientation_z = -quat(1);
         double orientation_w = quat(3);
-        // ToDo
-        // local_linvel(0) = world_vel(0);
-        // local_linvel(1) = world_vel(1);
-        // local_linvel(2) = world_vel(2);
-        return local_linvel;
+        // calc translation in local coordinates
+        sl::Orientation inv_quat;
+        inv_quat.x = -orientation_x;
+        inv_quat.y = -orientation_y;
+        inv_quat.z = -orientation_z;
+        inv_quat.w = orientation_w;
+        local_vel = world_vel * inv_quat;
+        return local_vel;
       }
 
         /* \brief Publish the pose of the camera as a transformation
@@ -734,7 +735,8 @@ namespace zed_wrapper {
                     if (odom_SubNumber > 0) {
                         zed->getPosition(pose);
                         raw_twist_linvel = rawLinearVelocity(pose, old_odom_pose, t, old_odom_t);
-                        twist_linvel = filteredLinearVelocity(raw_twist_linvel, old_twist_linvel);
+                        // twist_linvel = filteredLinearVelocity(raw_twist_linvel, old_twist_linvel);
+                        twist_linvel = raw_twist_linvel;
                         local_twist_linvel = localizedLinearVelocity(pose, twist_linvel);
                         // publishOdom(pose, pub_odom, odometry_frame_id, t, twist_linvel);
                         publishOdom(pose, pub_odom, odometry_frame_id, t, local_twist_linvel);
@@ -742,7 +744,8 @@ namespace zed_wrapper {
                         old_twist_linvel = twist_linvel;
                     }
 
-                    old_odom_t = ros::Time::now();
+                    // old_odom_t = ros::Time::now();
+                    old_odom_t = t;
 
                     //Note, the frame is published, but its values will only change if someone has subscribed to odom
                     //publishTrackedFrame(pose, transform_odom_broadcaster, odometry_transform_frame_id, t); //publish the tracked Frame
