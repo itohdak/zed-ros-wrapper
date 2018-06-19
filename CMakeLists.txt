@@ -89,6 +89,12 @@ add_dependencies(ZEDWrapper ${PROJECT_NAME}_gencfg)
 add_executable(zed_wrapper_node src/zed_wrapper_node.cpp)
 target_link_libraries(zed_wrapper_node ZEDWrapper ${LINK_LIBRARIES})
 add_dependencies(zed_wrapper_node ${PROJECT_NAME}_gencfg)
+# add_executable(CallStabilizerServiceForLinearVelocity src/CallStabilizerServiceForLinearVelocity.cpp)
+# target_link_libraries(CallStabilizerServiceForLinearVelocity ZEDWrapper ${LINK_LIBRARIES})
+# add_dependencies(CallStabilizerServiceForLinearVelocity ${PROJECT_NAME}_gencfg)
+add_executable(FilterForRawLinearVelocity src/FilterForRawLinearVelocity.cpp)
+target_link_libraries(FilterForRawLinearVelocity ZEDWrapper ${LINK_LIBRARIES})
+add_dependencies(FilterForRawLinearVelocity ${PROJECT_NAME}_gencfg)
 
 ###############################################################################
 
@@ -103,6 +109,8 @@ add_custom_target(dummy_${PROJECT_NAME} SOURCES ${extra_files})
 install(TARGETS
   ZEDWrapper
   zed_wrapper_node
+  # CallStabilizerServiceForLinearVelocity
+  FilterForRawLinearVelocity
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})

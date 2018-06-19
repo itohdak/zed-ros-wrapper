@@ -10,4 +10,7 @@
     </include>
   </group>
 
+  <node pkg="zed_wrapper" type="FilterForRawLinearVelocity" name="FilterForRawLinearVelocity" />
+  <!-- <node pkg="zed_wrapper" type="CallStabilizerServiceForLinearVelocity" name="CallStabilizerServiceForLinearVelocity" /> -->
+
 </launch>
