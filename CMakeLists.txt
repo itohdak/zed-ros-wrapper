@@ -12,8 +12,8 @@ find_package(ZED 2.0 REQUIRED)
 ##For Jetson, OpenCV4Tegra is based on OpenCV2.4
 exec_program(uname ARGS -p OUTPUT_VARIABLE CMAKE_SYSTEM_NAME2)
 if ( CMAKE_SYSTEM_NAME2 MATCHES "aarch64" ) # Jetson TX1
-    SET(OCV_VERSION "2.4")
-    SET(CUDA_VERSION "8.0")
+    SET(OCV_VERSION "3.3")
+    SET(CUDA_VERSION "9.0")
     SET(CUDA_USE_STATIC_CUDA_RUNTIME OFF)
 else() # Ubuntu Desktop
     SET(OCV_VERSION "3.1")
@@ -78,7 +78,7 @@ list(REMOVE_ITEM PCL_LIBRARIES "vtkproj4") ## if using from pcl package (pcl/vtk
 set(LINK_LIBRARIES
   ${catkin_LIBRARIES}
   ${ZED_LIBRARIES}
-  ${CUDA_LIBRARIES} ${CUDA_nppi_LIBRARY} ${CUDA_npps_LIBRARY}
+  ${CUDA_LIBRARIES} # ${CUDA_nppi_LIBRARY} ${CUDA_npps_LIBRARY}
   ${OpenCV_LIBS}
   ${PCL_LIBRARIES})
 
